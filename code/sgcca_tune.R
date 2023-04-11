@@ -1,39 +1,55 @@
 # -------------------------------------------------------------------------------
 # Tuning function for SGCCA 
 # -------------------------------------------------------------------------------
+library(RGCCA)
+library(MASS)
+library(tidyverse)
+library(purrr)
+# -------------------------------------------------------------------------------
 sgcca_tune <- function(dat.list, nperms = 5, scheme = "centroid"){
   ### Inspired by tuning function in PMACCA
   len <- length(dat.list)
-  min_dim <- dat.list %>% map(.,~ncol(.)) %>% unlist %>% min
-  l1_grid <- c(seq(1/sqrt(min_dim) + 0.05 , 0.8, 0.05))
+  min_dim <- dat.list %>% purrr::map(.,~ncol(.)) %>% unlist %>% min
+  l1_grid <- c(seq(1/sqrt(min_dim) + 0.01 , 0.7, 0.05))
 
-  t <- zs <- cor_org <- cv_cor <- c()
   
-  for(i in c(1:length(l1_grid))){
-    
-    cor_perm <- c()
-    s_org <- sgcca(dat.list, c1 = rep(l1_grid[i],2), scheme = scheme)
-    cor_org <- c(cor_org, get_corr(s_org$Y, scheme = scheme))
-    
-    for(j in 1:nperms){
+  doParallel::registerDoParallel(10)
+  
+  para <- plyr::ldply(
+    l1_grid,
+    .fun = function(l){
+      s_org <- sgcca(dat.list, c1 = rep(l,2), scheme = scheme)
+      cor_org <- s_org$AVE$AVE_inner
       
-      dat.perm <- lapply(dat.list, function(d) {d[sample(nrow(d)),]})
-      s_perm <- sgcca(dat.perm, c1 = rep(l1_grid[i],2), scheme = scheme)
-      cor_perm <- c(cor_perm, get_corr(s_perm$Y, scheme = scheme))
+      cor_perm <- plyr::llply(
+        1:nperms,
+        .fun = function(j){
+          dat.perm <- lapply(dat.list, function(d) {d[sample.int(nrow(d)),]})
+          
+          s_perm <- sgcca(dat.perm, c1 = rep(l,2), scheme = scheme)
+          #cor_perm <- c(cor_perm, get_corr(s_perm$Y, scheme = scheme))
+          c_perm <- s_perm$AVE$AVE_inner
+          
+          return(c_perm)
+        }
+      ) %>% unlist() 
       
-    }
-    
-    cc.norm <- ftrans(cor_org)
-    ccperm.norm <- ftrans(cor_perm)
-    t <- c(t, mean(ccperm.norm >= cc.norm[i]))
-    zs <- c(zs, (cc.norm[i]-mean(ccperm.norm))/(sd(ccperm.norm)+.05))
-    
-  }
+      cc.norm <- ftrans(cor_org)
+      ccperm.norm <- ftrans(cor_perm)
+      t <- mean(ccperm.norm >= cc.norm)
+      zs <- (cc.norm-mean(ccperm.norm))/(sd(ccperm.norm)+.05)
+      
+      data.frame(best_l1 = l, cor = cor_org, zs = zs, cor_perm = mean(cor_perm))
+      
+    },.parallel = T
+  )
   
-  max.index <- which.max(zs)
-  best_l1 <- l1_grid[max.index]
+  decreasing.ind <- sapply(1:(nrow(para)-1), function(i) (para[i,"zs"] - para[i+1,"zs"]))
+  para$decent.ind <- c(decreasing.ind, NA)
+  max.index <- which.max(para$decent.ind)
+  tab <- para[max.index,]
   
-  return(list( best_l1 = best_l1, cor = cor_org[max.index], zs = zs, pval = t))
+  return(tab)
   
 }
 
@@ -56,8 +72,44 @@ get_corr = function(dat, scheme = scheme, len = 2){
   return(corr)
 }
 
+sgcca_cv <- function(dat.list, scheme = "centroid", K = 3){
+  
+  len <- length(dat.list)
+  min_dim <- dat.list %>% purrr::map(.,~ncol(.)) %>% unlist %>% min
+  l1_grid <- c(seq(1/sqrt(min_dim) + 0.05 , 0.7, 0.05))
+  
+  doParallel::registerDoParallel(10)
+  
+  para <- plyr::ldply(
+    l1_grid,
+    .fun = function(l){
+      fold <- caret::createFolds(1:nrow(dat.list[[1]]), k = K)
+      
+      cv.cor <- plyr::llply(
+        1:K,
+        .fun = function(cv){
+          dat.list.train <- dat.list %>% purrr::map(.,~.[fold[-cv] %>% unlist,])
+          dat.list.test <- dat.list %>% purrr::map(.,~.[fold[[cv]],])
+          
+          s1 <- sgcca(dat.list.train, c1 = rep(l,2), scheme = scheme)
+          new.var <- list(s1$a[[1]][,1] %*% t(dat.list.test[[1]]) %>% t(), s1$a[[2]][,1] %*% t(dat.list.test[[2]]) %>% t())
+          get_corr(new.var, scheme = scheme) %>% as.numeric()
+        }
+      ) %>% unlist() %>% mean()
+      
+      data.frame(l1 = l, cor = cv.cor)
+      
+    },.parallel = T
+  )
+ 
+  idx <- which.max(para$cor)
+  
+  return(para[idx,])
+  
+}
+
 ftrans <- function (x) {
-  return(0.5 * log((1 + x)/(1 - x)))
+  return(atanh(x))
 }
 # -------------------------------------------------------------------------------
 # Simulation function
