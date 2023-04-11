@@ -44,6 +44,7 @@ sgcca_tune <- function(dat.list, nperms = 5, scheme = "centroid"){
     },.parallel = T
   )
   
+  ## Instead of selecting the penalty term using the maximum z score obtained by the permutation test, we calculated the descending index of z scores
   decreasing.ind <- sapply(1:(nrow(para)-1), function(i) (para[i,"zs"] - para[i+1,"zs"]))
   para$decent.ind <- c(decreasing.ind, NA)
   max.index <- which.max(para$decent.ind)
