@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = TRUE)
 source("code/sgcca_tune.R")
 ```
 
-This tuning function is inspired by the tuning function of PMACCA. The code can be found in: [tuning-c1-for-sgcca](https://github.com/noblegasss/Tuning-c1-for-sgcca/docs/code/)
+This tuning function is inspired by the tuning function of PMACCA. The code can be found in: [tuning-c1-for-sgcca](https://github.com/noblegasss/Tuning-c1-for-sgcca)
 The method is also compared with tuning parameter with cross validation 
 
 # Load library
