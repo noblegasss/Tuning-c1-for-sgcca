@@ -1,0 +1,119 @@
+---
+title: "Tuning function for parameter c1 in sgcca"
+author: "Wei Zhang"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    highlight: pygments
+    theme: yeti
+    toc: true
+    number_sections: true
+    df_print: paged
+    code_download: false
+    toc_float:
+      collapsed: yes
+    toc_depth: 3
+editor_options:
+  chunk_output_type: inline    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("code/sgcca_tune.R")
+```
+
+This tuning function is inspired by the tuning function of PMACCA. The code can be found in: [tuning-c1-for-sgcca](https://github.com/noblegasss/Tuning-c1-for-sgcca)
+The method is also compared with tuning parameter with cross validation 
+
+# Load library
+
+```{r message = F}
+library(RGCCA)
+library(MASS)
+library(tidyverse)
+library(purrr)
+```
+
+# Simulation two datasets with common latent variables
+
+$$
+\begin{aligned}
+X&=u w_1^{T}+\epsilon_1, \\
+Y&=u w_2^{T}+\epsilon_2
+\end{aligned}
+$$
+
+```{r}
+set.seed(510)
+sim.dat <- sim.linear2(n = 100, p = 150, psel = 30)$X
+```
+
+We selected the first 30 features as non-zero features.
+
+# Tuning function
+
+```{r}
+set.seed(510)
+system.time({
+  tune.sgcca <- sgcca_tune(sim.dat, scheme = "centroid", nperms = 10)
+})
+tune.sgcca
+```
+
+```{r}
+sgcca.m <- sgcca(sim.dat, c1 = rep(tune.sgcca$best_l1))
+```
+
+Here we calculated the first canonical correlations with the tuned penalized parameter c1. We can see that most of the zero loadings are shrink to 0.
+
+```{r echo = F}
+par(mfrow = c(1,2))
+plot(sgcca.m$a$X1, ylab = "loading for X1", pch = 20, col = c(rep("red",30), rep("black",120)))
+plot(sgcca.m$a$X2, ylab = "loading for X2", pch = 20, col = c(rep("red",30), rep("black",120)))
+```
+
+# Using CV to tue c1
+
+```{r}
+set.seed(510)
+system.time({
+  cv.sgcca <- sgcca_cv(sim.dat, scheme = "centroid", K = 10)
+})
+print(cv.sgcca)
+```
+
+
+```{r}
+sgcca.m <- sgcca(sim.dat, c1 = rep(cv.sgcca$l1))
+```
+
+
+```{r echo = F}
+par(mfrow = c(1,2))
+plot(sgcca.m$a$X1, ylab = "loading for X1", pch = 20, col = c(rep("red",30), rep("black",120)))
+plot(sgcca.m$a$X2, ylab = "loading for X2", pch = 20, col = c(rep("red",30), rep("black",120)))
+```
+
+
+
+# Without tuning c1
+
+```{r}
+sgcca.m2 <- sgcca(sim.dat)
+get_corr(sgcca.m2$Y, scheme = "centroid")
+```
+
+```{r}
+par(mfrow = c(1,2))
+plot(sgcca.m2$a$X1, ylab = "loading for X1", pch = 20, col = c(rep("red",30), rep("black",170)))
+plot(sgcca.m2$a$X2, ylab = "loading for X2", pch = 20, col = c(rep("red",30), rep("black",170)))
+```
+
+
+
+# Session Information
+
+```{r}
+devtools::session_info()
+```
+
