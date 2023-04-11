@@ -57,7 +57,7 @@ get_corr = function(dat, scheme = scheme, len = 2){
 }
 
 ftrans <- function (x) {
-  return(0.5 * log((1 + x)/(1 - x)))
+  return(atanh(x))
 }
 # -------------------------------------------------------------------------------
 # Simulation function
